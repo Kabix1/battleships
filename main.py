@@ -3,6 +3,7 @@
 import game
 import random
 import copy
+import math
 
 EMPTY = "-"
 HIT = "h"
@@ -11,27 +12,34 @@ SHIPS = (1, 2, 2, 3, 4, 5)
 
 
 def main():
-    num_attempts = 1
-    steps = 0
+    num_attempts = 10
+    total_steps = 0
     for _ in range(num_attempts):
+        steps = 0
         g = game.Game()
         board = g.get_board()
         while board:
-            print_board(board)
+            # print_board(board)
             steps += 1
+            if steps > 100:
+                # print_board(board)
+                g.replay()
+                return
             has_moved = False
             # hits = get_all_hits(board)
             hit_clusters = get_clusters(board, c=HIT)
+            hits = get_all_hits(board)
             ships_left = get_ships_left(board)
             # print(f"Ships left: {ships_left}")
             # if hit_clusters and (pos := targets_around_hits(board, hits)):
 
-            if hit_clusters:
-                pos = target_around_hits(board, hit_clusters[0])
+            if hits:
+                pos = target_around_hits(board, hits)
                 board = g.next_move(pos)
             else:
                 board = g.next_move(random_target(board))
-    print(f"Game over! Average number of moves was {steps/num_attempts}")
+        total_steps += steps
+    print(f"Game over! Average number of moves was {total_steps/num_attempts}")
 
 
 def print_board(board):
@@ -49,12 +57,83 @@ def target_around_hits(board, hits):
     size = len(hits)
     if size == 1:
         return targets[0]
-    print(
-        f"{hits[0]} has potential ships {get_ships_over_pos(board, hits[0], ships_left)}"
-    )
-    return targets[0]
+    ship_placements = set()
     for hit in hits:
-        get_hor_ships(board, hit, ships_left)
+        ship_placements = ship_placements.union(
+            get_ships_over_pos(board, hit, ships_left)
+        )
+    ship_placements = tuple(ship_placements)
+    validator = get_placement_validator(hits, ship_placements, ships_left)
+    combinations = []
+    for n in range(1, 5):
+        combs = all_valid_combinations(len(ship_placements), n, validator)
+        if combs:
+            combinations.extend(combs)
+    pos_count = {}
+    for comb in combinations:
+        for ship in [ship_placements[i] for i in comb]:
+            for pos in ship:
+                if pos not in hits:
+                    pos_count[pos] = pos_count.get(pos, 0) + 1
+    if not pos_count.keys():
+        print_board(board)
+        print(ship_placements)
+    most_common_pos = max(pos_count.keys(), key=lambda k: pos_count[k])
+    return most_common_pos
+
+
+def print_simulated_placements(board, ships):
+    board_copy = copy.deepcopy(board)
+    for ship in ships:
+        char = str(len(ship))
+        for x, y in ship:
+            board_copy[x][y] = char
+    print_board(board_copy)
+
+
+def all_valid_combinations(length, n, validator=None):
+    combs = []
+    if not validator:
+        validator = lambda a: True
+    # for n in range(1, max_num + 1):
+    current_comb = [0] * n
+    all_valid_combinations_util(length, n, validator, combs, current_comb, 0)
+    return combs
+
+
+def all_valid_combinations_util(length, n, validator, combs, current_comb, index):
+    if not n:
+        if validator(current_comb):
+            combs.append(list(current_comb))
+        return
+
+    prev = -1 if not index else current_comb[index - 1]
+
+    for i in range(prev + 1, length):
+        current_comb[index] = i
+        all_valid_combinations_util(
+            length, n - 1, validator, combs, current_comb, index + 1
+        )
+
+
+def get_placement_validator(hit_cluster, placements, ships_left):
+    def validator(combination):
+        positions = set()
+        ships_left_copy = list(ships_left)
+        for i in combination:
+            if (length := len(placements[i])) not in ships_left_copy:
+                return False
+            ships_left_copy.remove(length)
+            for pos in placements[i]:
+                if pos in positions:
+                    return False
+                positions.add(pos)
+        for hit in hit_cluster:
+            if hit not in positions:
+                return False
+        return True
+
+    return validator
 
 
 def get_ships_over_pos(board, pos, ships_left):
@@ -98,17 +177,16 @@ def get_ships_over_pos(board, pos, ships_left):
     for size in set(ships_left):
         all_placements.extend(all_snippets_of_length(row, size))
         all_placements.extend(all_snippets_of_length(col, size))
-    # print(all_hors, start, end)
     if not all_placements:
         return None
-    ships = []
+    ships = set()
     for ship in all_placements:
         if pos not in ship:
             continue
         values = [board[x][y] for x, y in ship]
         if EMPTY not in values:
             continue
-        ships.append(ship)
+        ships.add(tuple(ship))
     return ships
 
 

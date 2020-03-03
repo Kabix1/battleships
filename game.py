@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import random
+import copy
 
 
 class Game:
@@ -10,6 +11,9 @@ class Game:
         self.board = [["-"] * self.size for _ in range(self.size)]
         self.ships = {}
         self.place_ships(SHIPS)
+        self.record = []
+        self.starting_board = copy.deepcopy(self.board)
+        self.starting_ships = copy.deepcopy(self.ships)
 
     def place_ships(self, ships):
         for num, ship in enumerate(ships):
@@ -35,9 +39,11 @@ class Game:
             x, y = (x + 1, y) if ori else (x, y + 1)
         return True
 
-    def print_board(self):
+    def print_board(self, board=None):
+        if not board:
+            board = self.board
         print("_" * self.size * 2)
-        for row in self.board:
+        for row in board:
             print("".join(row))
         print("_" * self.size * 2)
 
@@ -53,7 +59,16 @@ class Game:
             public_board.append(public_row)
         return public_board
 
+    def replay(self):
+        self.board = self.starting_board
+        self.ships = self.starting_ships
+        for pos in self.record:
+            self.print_board()
+            print(pos)
+            self.next_move(pos)
+
     def next_move(self, pos):
+        self.record.append(pos)
         x, y = pos
         self.shoot(x, y)
         if self.ships:
